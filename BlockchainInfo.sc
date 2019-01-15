@@ -1,7 +1,22 @@
 import $ivy.`org.jsoup:jsoup:1.11.3`
+import $ivy.`io.circe::circe-core:0.10.0`
+import $ivy.`io.circe::circe-parser:0.10.0`
+import $ivy.`io.circe::circe-generic:0.10.0`
 
-def downloadHeadersForDate(year: Int, month: Int, day: Int): List[(Int, String)] = {
-   def pad2(x: Int): String = if(x >= 10) x.toString else s"0${x}"
+import io.circe._
+import io.circe.parser._
+import io.circe.syntax._
+import io.circe.generic.semiauto._
+
+case class ChainHeader(height: Int, hash: String)
+object ChainHeader {
+   implicit val chainHeaderDecoder: Decoder[ChainHeader] = deriveDecoder[ChainHeader]
+   implicit val chainHeaderEncoder: Encoder[ChainHeader] = deriveEncoder[ChainHeader]
+}
+import ChainHeader._
+
+def pad2(x: Int): String = if(x >= 10) x.toString else s"0${x}"
+def downloadHeadersForDate(year: Int, month: Int, day: Int): List[ChainHeader] = {
    val dtIso = s"${year}-${pad2(month)}-${pad2(day)}T00:00:00.0Z"
    val tm = java.sql.Timestamp.from(java.time.Instant.parse(dtIso)).getTime
    val url = s"https://www.blockchain.com/btc/blocks/${tm}"
@@ -15,18 +30,38 @@ def downloadHeadersForDate(year: Int, month: Int, day: Int): List[(Int, String)]
        tr <- table.select("tr").asScala
        a = tr.select("a").eachText
        if a.size > 0
-   } yield (a.get(0).toInt, a.get(1))
+   } yield ChainHeader(a.get(0).toInt, a.get(1))
    res.toList
 }
 
+def getHeadersForDate(year: Int, month: Int, day: Int): List[ChainHeader] = {
+    val sCacheFile = s"./data/${year}-${pad2(month)}-${pad2(day)}.json"
+    val file = new java.io.File(sCacheFile)
+    if (file.exists) {
+        val input = scala.io.Source.fromFile(sCacheFile).getLines.mkString
+        parser.decode[List[ChainHeader]](input) match {
+            case Right(list) => 
+                list
+            case Left(error) => {
+                println("ERROR:" + error); 
+                List()
+            }
+        }
+    } else {
+        import java.io.PrintWriter
+        val headers = downloadHeadersForDate(year, month, day)
+        new PrintWriter(file) { write(headers.asJson.toString); close }
+        headers
+    }
+}
 
 import java.time.{ Month, LocalDate, Instant }
-
-val year = LocalDate.now.getYear
+val year = LocalDate.now.getYear - 2
 def between(fromDate: LocalDate, toDate: LocalDate) = fromDate.toEpochDay.until(toDate.toEpochDay).map(LocalDate.ofEpochDay)
 val dateRange = between(LocalDate.of(year, Month.JANUARY, 1), LocalDate.now).reverse
 dateRange.map { dt =>
-    val startTime = Instant.now
-    val hashes = downloadHeadersForDate(dt.getYear, dt.getMonth.getValue, dt.getDayOfMonth)
-    println(startTime, dt, hashes.length)
+    val hashes = getHeadersForDate(dt.getYear, dt.getMonth.getValue, dt.getDayOfMonth)
+    val minHeight = hashes.map(_.height).min
+    val maxHeight = hashes.map(_.height).max
+    println(dt, hashes.length, minHeight, maxHeight)
 }

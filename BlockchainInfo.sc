@@ -56,12 +56,14 @@ def getHeadersForDate(year: Int, month: Int, day: Int): List[ChainHeader] = {
 }
 
 import java.time.{ Month, LocalDate, Instant }
-val year = LocalDate.now.getYear - 2
+val year = LocalDate.now.getYear
 def between(fromDate: LocalDate, toDate: LocalDate) = fromDate.toEpochDay.until(toDate.toEpochDay).map(LocalDate.ofEpochDay)
 val dateRange = between(LocalDate.of(year, Month.JANUARY, 1), LocalDate.now).reverse
-dateRange.map { dt =>
+val sum = dateRange.map { dt =>
     val hashes = getHeadersForDate(dt.getYear, dt.getMonth.getValue, dt.getDayOfMonth)
     val minHeight = hashes.map(_.height).min
     val maxHeight = hashes.map(_.height).max
     println(dt, hashes.length, minHeight, maxHeight)
-}
+    hashes.length
+}.reduce(_+_)
+println("total: " + sum + " blocks")

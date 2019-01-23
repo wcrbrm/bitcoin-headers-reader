@@ -33,6 +33,14 @@ def getHeadersForDate(year: Int, month: Int, day: Int): List[ChainHeader] = {
     }
 }
 
+def niceTime(tm: Long) = {
+    // val ts = new java.sql.Timestamp(tm)
+    // val date = new java.util.Date(tm)
+    val ts  = tm * 1000L
+    val df = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+
+    tm + ": " + df.format(ts)
+}
 
 import java.time.{ Month, LocalDate, Instant }
 val year = LocalDate.now.getYear - 2
@@ -44,12 +52,7 @@ val dateRange = between(
 
 var blocksList = dateRange.map { dt =>
     getHeadersForDate(dt.getYear, dt.getMonth.getValue, dt.getDayOfMonth)
-}.flatten
-
-// val mapped: Map[Int, String]
-// .map { 
-//   case h: ChainHeader => (h.height -> h.hash)
-// }.toMap
+}.flatten.sortWith(_.height < _.height)
 
 import java.io.{ File, FileInputStream }
 import java.util.zip.GZIPInputStream
@@ -81,9 +84,11 @@ var errors = 0
 blocksList.zipWithIndex.foreach{ 
   case (h: ChainHeader, index: Int) =>
     val file = getHashFile(h.hash)
-    // val isLast = h.height == blocksList(blocksList.size - 1).height
     val isFirst = h.height == blocksList(0).height
+    val isLast = h.height == blocksList(blocksList.size - 1).height
     val prevHash: String = if (isFirst) "" else blocksList(index - 1).hash
+    val thisHash: String = blocksList(index).hash   
+    // println(h.height + "\t" + h.hash + " " + prevHash)
 
     if (!file.exists) {
         println("height=" + h.height + ", file is missing " + file.getAbsolutePath)
@@ -100,8 +105,8 @@ blocksList.zipWithIndex.foreach{
                         if( amounts.hash != h.hash) {
                             println("height=" + h.height + ", unexpected hash, get " + amounts.hash + ", expected " + h.hash)        
                             errors += 1
-                        } else if (!isFirst && amounts.prev != prevHash) {
-                            println("height=" + h.height + ", prev hash  mismatch " + amounts.prev + ", expected " + prevHash + " in " + file.getAbsolutePath)        
+                        } else if (prevHash != "" && amounts.prev != prevHash) {
+                            println("height=" + h.height + ", time= " + niceTime(amounts.time) + ", prev hash  mismatch " + amounts.prev + ", expected " + prevHash + " in " + file.getAbsolutePath)        
                             errors += 1
                         } else {
                             if (index % 1000 == 0) println("...height=" + h.height)

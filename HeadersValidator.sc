@@ -1,4 +1,3 @@
-import $ivy.`org.jsoup:jsoup:1.11.3`
 import $ivy.`io.circe::circe-core:0.10.0`
 import $ivy.`io.circe::circe-parser:0.10.0`
 import $ivy.`io.circe::circe-generic:0.10.0`

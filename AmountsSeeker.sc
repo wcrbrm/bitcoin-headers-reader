@@ -29,29 +29,37 @@ implicit val amountsPacketEncoder: Encoder[AmountsPacket] = deriveEncoder[Amount
 import akka.stream.alpakka.file.scaladsl.Directory
 import java.nio.file.{ Paths, FileVisitOption }
 import scala.collection.immutable.StringOps
+import akka.stream.scaladsl._
+import scala.concurrent.{ Future, Await }
+import scala.concurrent.duration._
 
 implicit val system = akka.actor.ActorSystem("btc-amounts")
 implicit val mat = akka.stream.ActorMaterializer()
+implicit val ec = system.dispatcher
 
 var errors = 0
 def handlePacket(packet: AmountsPacket): Unit = {
     packet.values.keys.map(value => {
-        if (value.toString.length > 10 && 
-            value.toString.contains("66666666666")) {
-            val v = new StringOps(value).padTo(10, "-").mkString("")
-            println("BLOCK\t" + packet.hash + "\t" + v )
+        if (
+            value.toString.length > 10 && 
+            value.toLong >= 55500000000L
+        ) {
+            val v = new StringOps(value).reverse.padTo(14, "-").reverse.mkString("")
+            val withDots = v.substring(0, v.length - 8) + "." + v.substring(v.length - 8)
+            println("BLOCK\t" + packet.hash + " " + withDots )
         }
     })
 }
 
 val folderAmounts: String = Properties.envOrElse("HASHES_FOLDER", "/tmp/cache/btc/amounts")
+val parallelism = Runtime.getRuntime.availableProcessors
 val root = Paths.get( folderAmounts )
 println("starting...")
-Directory.walk(root, maxDepth = Some(2), List(FileVisitOption.FOLLOW_LINKS))
+val done = Directory.walk(root, maxDepth = Some(2), List(FileVisitOption.FOLLOW_LINKS))
     .filter(_.toString.endsWith(".gz"))
     .map(_.toString)
-    .take(10000000)
-    .runForeach{ file => 
+    .take(1000)
+    .mapAsyncUnordered(parallelism){ file => 
         Gzip.decompress(new File(file)) match {
             case Some(contents) => {
                 decode[AmountsPacket](contents) match {
@@ -67,6 +75,7 @@ Directory.walk(root, maxDepth = Some(2), List(FileVisitOption.FOLLOW_LINKS))
                 errors += 1
             }
         }
-    }
+        Future { 0 }
+    }.runWith(Sink.seq)
 
-// scala.io.StdIn.readLine
+done.onComplete{ _ => println("COMPLETE") }
